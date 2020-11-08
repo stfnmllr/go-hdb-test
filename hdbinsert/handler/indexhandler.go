@@ -30,21 +30,25 @@ func (h *IndexHandler) init(testHandler *TestHandler, dbHandler *DBHandler) (*In
 	}
 
 	type page struct {
-		GOMAXPROCS  int
-		NumCPU      int
-		Flags       []*flag.Flag
-		Prms        [][]prm
-		Tests       []string
-		SchemaName  string
-		TableName   string
-		SchemaFuncs []*dbFunc
-		TableFuncs  []*dbFunc
+		GOMAXPROCS    int
+		NumCPU        int
+		DriverVersion string
+		HDBVersion    string
+		Flags         []*flag.Flag
+		Prms          [][]prm
+		Tests         []string
+		SchemaName    string
+		TableName     string
+		SchemaFuncs   []*dbFunc
+		TableFuncs    []*dbFunc
 	}
 
 	indexPage := page{
-		GOMAXPROCS: runtime.GOMAXPROCS(0),
-		NumCPU:     runtime.NumCPU(),
-		Flags:      env.Flags(),
+		GOMAXPROCS:    runtime.GOMAXPROCS(0),
+		NumCPU:        runtime.NumCPU(),
+		DriverVersion: dbHandler.DriverVersion(),
+		HDBVersion:    dbHandler.HDBVersion(),
+		Flags:         env.Flags(),
 		Prms: [][]prm{
 			{{1, 100000}, {10, 10000}, {100, 1000}},
 			{{1, 1000000}, {10, 100000}, {100, 10000}, {1000, 1000}},
@@ -84,6 +88,8 @@ var indexTmpl = template.Must(template.New("index").Parse(`
 			<tr>	<th colspan="100%">Runtime information</td></tr>
 			<tr>	<td>GOMAXPROCS</td><td>{{.GOMAXPROCS}}</td></tr>
 			<tr>	<td>NumCPU</td><td>{{.NumCPU}}</td></tr>
+			<tr>	<td>Driver Version</td><td>{{.DriverVersion}}</td></tr>
+			<tr>	<td>HANA Version</td><td>{{.HDBVersion}}</td></tr>
 		</table>
 
 		<br/>
@@ -139,19 +145,23 @@ var indexTmpl = template.Must(template.New("index").Parse(`
 		<br/>
 			
 		<table border="1">
+			{{$SchemaName := .SchemaName}}
+			{{$TableName := .TableName}}
 			<tr>
 				<th colspan="100%">Database operations</td>
 			</tr>
 			<tr>
-				<td>Table {{.TableName}}</td>
+				<td>Table {{$TableName}}</td>
 				{{range .TableFuncs}}
-				<td><a href={{.Command}}>{{.Op.String}}</a></td>
+				{{$Op := .Op.String}}
+				<td>{{with $x := printf "%s?schemaname=%s&tablename=%s" .Command $SchemaName $TableName }}<a href={{$x}}>{{$Op}}</a>{{end}}</td>
 				{{end}}
 			</tr>
 			<tr>
-				<td>Schema {{.SchemaName}}</td>
+				<td>Schema {{$SchemaName}}</td>
 				{{range .SchemaFuncs}}
-				<td><a href={{.Command}}>{{.Op.String}}</a></td>
+				{{$Op := .Op.String}}
+				<td>{{with $x := printf "%s?schemaname=%s" .Command $SchemaName }}<a href={{$x}}>{{$Op}}</a>{{end}}</td>
 				{{end}}
 			</tr>
 		</table>

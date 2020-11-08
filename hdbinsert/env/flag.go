@@ -23,9 +23,12 @@ const (
 	FnBatchCount = "batchCount"
 	FnBatchSize  = "batchSize"
 	FnBufferSize = "bufferSize"
+	FnDrop       = "drop"
+	FnSeparate   = "separate"
+	FnWait       = "wait"
 )
 
-var flagNames = []string{FnDSN, FnHost, FnPort, FnSchemaName, FnTableName, FnBatchCount, FnBatchSize, FnBufferSize}
+var flagNames = []string{FnDSN, FnHost, FnPort, FnSchemaName, FnTableName, FnBatchCount, FnBatchSize, FnBufferSize, FnDrop, FnSeparate, FnWait}
 
 // Environment constants.
 const (
@@ -37,12 +40,17 @@ const (
 	envBatchCount = "BATCHCOUNT"
 	envBatchSize  = "BATCHSIZE"
 	envBufferSize = "BUFFERSIZE"
+	envDrop       = "DROP"
+	envSeparate   = "SEPARATE"
+	envWait       = "WAIT"
 )
 
 var (
 	dsn, host, port                   string
 	schemaName, tableName             string
 	batchCount, batchSize, bufferSize int
+	drop, separate                    bool
+	wait                              int
 )
 
 var initRan bool
@@ -61,6 +69,9 @@ func init() {
 	flag.IntVar(&batchCount, FnBatchCount, getIntEnv(envBatchCount, 10), fmt.Sprintf("Batch count (environment variable: %s)", envBatchCount))
 	flag.IntVar(&batchSize, FnBatchSize, getIntEnv(envBatchSize, 10000), fmt.Sprintf("Batch size (environment variable: %s)", envBatchSize))
 	flag.IntVar(&bufferSize, FnBufferSize, getIntEnv(envBufferSize, driver.DefaultBufferSize), fmt.Sprintf("Buffer size in bytes (environment variable: %s)", envBufferSize))
+	flag.BoolVar(&drop, FnDrop, getBoolEnv(envDrop, false), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
+	flag.BoolVar(&separate, FnSeparate, getBoolEnv(envSeparate, false), fmt.Sprintf("Separate tables for parallel tests (environment variable: %s)", envSeparate))
+	flag.IntVar(&wait, FnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
 }
 
 // DSN returns the dsn command-line flag.
@@ -86,6 +97,15 @@ func BatchSize() int { return batchSize }
 
 // BufferSize returns the bufferSize command-line flag.
 func BufferSize() int { return bufferSize }
+
+// Drop returns the drop command-line flag.
+func Drop() bool { return drop }
+
+// Separate returns the separate command-line flag.
+func Separate() bool { return separate }
+
+// Wait returns the wait command-line flag.
+func Wait() int { return wait }
 
 // Flags returns a slice containing all command-line flags defined in this package.
 func Flags() []*flag.Flag {
@@ -129,4 +149,19 @@ func getIntEnv(key string, defValue int) int {
 		return defValue
 	}
 	return i
+}
+
+// getBoolEnv retrieves the bool value of the environment variable named by the key.
+// If the variable is present in the environment the value is returned.
+// Otherwise the default value defValue is retuned.
+func getBoolEnv(key string, defValue bool) bool {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return defValue
+	}
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return defValue
+	}
+	return b
 }

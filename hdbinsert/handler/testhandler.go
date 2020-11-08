@@ -12,13 +12,20 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/driver"
 	"github.com/stfnmllr/go-hdb-test/hdbinsert/env"
 )
+
+func getBulkInsertQuery(schemaName, tableName string) string {
+	return fmt.Sprintf("bulk insert into %s.%s values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", driver.Identifier(schemaName), driver.Identifier(tableName))
+}
+
+func getInsertQuery(schemaName, tableName string) string {
+	return fmt.Sprintf("insert into %s.%s values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", driver.Identifier(schemaName), driver.Identifier(tableName))
+}
 
 // Test URL paths.
 const (
@@ -46,32 +53,26 @@ func (r *TestResult) String() string {
 	return fmt.Sprintf("%s: insert of %d rows in %f seconds (batchCount %d batchSize %d bulkSize %d)", r.Test, r.BatchCount*r.BatchSize, r.Duration.Seconds(), r.BatchCount, r.BatchSize, r.BulkSize)
 }
 
-type testFunc func(db *sql.DB, batchCount, batchSize int) (time.Duration, error)
+type testFunc func(db *sql.DB, batchCount, batchSize int, drop, separate bool, wait time.Duration) (time.Duration, error)
 
 // TestHandler implements the http.Handler interface for the tests.
 type TestHandler struct {
 	log        logFunc
 	dsn        string
 	schemaName string
-	tableName  driver.Identifier
+	tableName  string
 	testFuncs  map[string]testFunc
-
-	bulkInsertQuery, insertQuery string
 }
 
 // NewTestHandler returns a new TestHandler instance.
 func NewTestHandler(log logFunc) (*TestHandler, error) {
-	tableName := driver.Identifier(env.TableName())
-
-	h := &TestHandler{log: log, dsn: env.DSN(), schemaName: env.SchemaName(), tableName: tableName}
+	h := &TestHandler{log: log, dsn: env.DSN(), schemaName: env.SchemaName(), tableName: env.TableName()}
 	h.testFuncs = map[string]testFunc{
 		TestBulkSeq: h.bulkSeq,
 		TestManySeq: h.manySeq,
 		TestBulkPar: h.bulkPar,
 		TestManyPar: h.manyPar,
 	}
-	h.bulkInsertQuery = fmt.Sprintf("bulk insert into %s values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tableName)
-	h.insertQuery = fmt.Sprintf("insert into %s values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tableName)
 	return h, nil
 }
 
@@ -85,8 +86,20 @@ func (h *TestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// by clearing garbage from previous runs.
 	runtime.GC()
 
-	batchCount := h.convert2int(r.URL.Query().Get("batchcount"), env.BatchCount())
-	batchSize := h.convert2int(r.URL.Query().Get("batchsize"), env.BatchSize())
+	q := newURLQuery(r)
+
+	batchCount, err := q.getInt(urlQueryBatchCount)
+	if err != nil { // set default value
+		batchCount = env.BatchCount()
+	}
+	batchSize, err := q.getInt(urlQueryBatchSize)
+	if err != nil { // set default value
+		batchSize = env.BatchSize()
+	}
+
+	drop := env.Drop()
+	separate := env.Separate()
+	wait := time.Duration(env.Wait()) * time.Second
 
 	test := r.URL.Path
 
@@ -108,7 +121,7 @@ func (h *TestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var d time.Duration
 
 	if f, ok := h.testFuncs[test]; ok {
-		d, err = f(db, batchCount, batchSize)
+		d, err = f(db, batchCount, batchSize, drop, separate, wait)
 	} else {
 		err = fmt.Errorf("Invalid test %s", test)
 	}
@@ -121,15 +134,20 @@ func (h *TestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *TestHandler) bulkSeq(db *sql.DB, batchCount, batchSize int) (time.Duration, error) {
+func (h *TestHandler) bulkSeq(db *sql.DB, batchCount, batchSize int, drop, separate bool, wait time.Duration) (time.Duration, error) {
 	numRow := batchCount * batchSize
+
+	ensureTable(db, h.schemaName, h.tableName, drop)
+	if wait > 0 {
+		time.Sleep(wait)
+	}
 
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		return 0, err
 	}
 
-	stmt, err := conn.PrepareContext(context.Background(), h.bulkInsertQuery)
+	stmt, err := conn.PrepareContext(context.Background(), getBulkInsertQuery(h.schemaName, h.tableName))
 	if err != nil {
 		return 0, err
 	}
@@ -156,13 +174,18 @@ func (h *TestHandler) bulkSeq(db *sql.DB, batchCount, batchSize int) (time.Durat
 	return d, nil
 }
 
-func (h *TestHandler) manySeq(db *sql.DB, batchCount, batchSize int) (time.Duration, error) {
+func (h *TestHandler) manySeq(db *sql.DB, batchCount, batchSize int, drop, separate bool, wait time.Duration) (time.Duration, error) {
+	ensureTable(db, h.schemaName, h.tableName, drop)
+	if wait > 0 {
+		time.Sleep(wait)
+	}
+
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		return 0, err
 	}
 
-	stmt, err := conn.PrepareContext(context.Background(), h.insertQuery)
+	stmt, err := conn.PrepareContext(context.Background(), getInsertQuery(h.schemaName, h.tableName))
 	if err != nil {
 		return 0, err
 	}
@@ -208,10 +231,34 @@ func (t *task) close() {
 	t.conn.Close()
 }
 
-func (h *TestHandler) createTasks(db *sql.DB, query string, batchCount, batchSize int) ([]*task, error) {
+func (h *TestHandler) createTasks(db *sql.DB, batchCount, batchSize int, bulk, drop, separate bool) ([]*task, error) {
+	tableName := h.tableName
+
+	// use same table for all tasks
+	if !separate {
+		if err := ensureTable(db, h.schemaName, tableName, drop); err != nil {
+			return nil, err
+		}
+	}
+
 	var err error
 	tasks := make([]*task, batchCount)
 	for i := 0; i < batchCount; i++ {
+		// use separate table for each task
+		if separate {
+			tableName = fmt.Sprintf("%s_%d", h.tableName, i)
+			if err := ensureTable(db, h.schemaName, tableName, drop); err != nil {
+				return nil, err
+			}
+		}
+
+		var query string
+		if bulk {
+			query = getBulkInsertQuery(h.schemaName, tableName)
+		} else {
+			query = getInsertQuery(h.schemaName, tableName)
+		}
+
 		if tasks[i], err = newTask(db, query, i, batchSize); err != nil {
 			return nil, err
 		}
@@ -219,12 +266,16 @@ func (h *TestHandler) createTasks(db *sql.DB, query string, batchCount, batchSiz
 	return tasks, err
 }
 
-func (h *TestHandler) bulkPar(db *sql.DB, batchCount, batchSize int) (time.Duration, error) {
+func (h *TestHandler) bulkPar(db *sql.DB, batchCount, batchSize int, drop, separate bool, wait time.Duration) (time.Duration, error) {
 	var wg sync.WaitGroup
 
-	tasks, err := h.createTasks(db, h.bulkInsertQuery, batchCount, batchSize)
+	tasks, err := h.createTasks(db, batchCount, batchSize, true, drop, separate)
 	if err != nil {
 		return 0, err
+	}
+
+	if wait > 0 {
+		time.Sleep(wait)
 	}
 
 	t := time.Now() // Start time.
@@ -260,12 +311,16 @@ func (h *TestHandler) bulkPar(db *sql.DB, batchCount, batchSize int) (time.Durat
 	return d, err
 }
 
-func (h *TestHandler) manyPar(db *sql.DB, batchCount, batchSize int) (time.Duration, error) {
+func (h *TestHandler) manyPar(db *sql.DB, batchCount, batchSize int, drop, separate bool, wait time.Duration) (time.Duration, error) {
 	var wg sync.WaitGroup
 
-	tasks, err := h.createTasks(db, h.insertQuery, batchCount, batchSize)
+	tasks, err := h.createTasks(db, batchCount, batchSize, false, drop, separate)
 	if err != nil {
 		return 0, err
+	}
+
+	if wait > 0 {
+		time.Sleep(wait)
 	}
 
 	t := time.Now() // Start time.
@@ -297,7 +352,7 @@ func (h *TestHandler) manyPar(db *sql.DB, batchCount, batchSize int) (time.Durat
 
 func (h *TestHandler) setup(batchSize int) (*sql.DB, int, error) {
 	// Set bulk size to batchSize.
-	connector, err := driver.NewConnector(map[string]interface{}{"dsn": h.dsn, "defaultSchema": h.schemaName, "bulkSize": batchSize, "bufferSize": env.BufferSize()})
+	connector, err := driver.NewConnector(map[string]interface{}{"dsn": h.dsn, "bulkSize": batchSize, "bufferSize": env.BufferSize()})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -306,21 +361,6 @@ func (h *TestHandler) setup(batchSize int) (*sql.DB, int, error) {
 
 func (h *TestHandler) teardown(db *sql.DB) {
 	db.Close()
-}
-
-// convert2int converts the string s to an integer.
-// If s is empty the defaultValue is returned.
-// If the conversion is not posible the program will be exited.
-func (h *TestHandler) convert2int(s string, defaultValue int) int {
-	if s == "" { // empty string -> return default value
-		return defaultValue
-	}
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		h.log("Integer conversion %s failed: %s", s, err)
-		return defaultValue
-	}
-	return i
 }
 
 // randFloat64 return a random float64 number f with min <= f < max.

@@ -6,8 +6,11 @@ package benchmark
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -23,41 +26,21 @@ func BenchmarkInsert(b *testing.B) {
 		}
 	}
 
-	// Create handlers.
-	dbHandler, err := handler.NewDBHandler(b.Logf)
-	checkErr(err)
+	// Create handler.
 	testHandler, err := handler.NewTestHandler(b.Logf)
+	checkErr(err)
+	dbHandler, err := handler.NewDBHandler(b.Logf)
 	checkErr(err)
 
 	// Register handlers.
 	mux := http.NewServeMux()
 	mux.Handle("/test/", testHandler)
-	mux.Handle("/db/", dbHandler)
 
 	// Start http test server.
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
 	client := ts.Client()
-
-	execDB := func(cmd string) (*handler.DBResult, error) {
-		r, err := client.Get(ts.URL + cmd)
-		if err != nil {
-			return nil, err
-		}
-
-		defer r.Body.Close()
-
-		res := &handler.DBResult{}
-		if err := json.NewDecoder(r.Body).Decode(res); err != nil {
-			return nil, err
-		}
-		return res, nil
-	}
-
-	if execDB == nil {
-
-	}
 
 	execTest := func(test string) (*handler.TestResult, error) {
 		r, err := client.Get(ts.URL + test)
@@ -74,21 +57,9 @@ func BenchmarkInsert(b *testing.B) {
 		return res, nil
 	}
 
-	recreateTable := func() {
-		// Drop and re-create table.
-		// - delete rows lead to an out-of-memory error in HANA while trying do delete millions of rows.
-		if _, err := execDB(handler.CmdDropTable); err != nil {
-			b.Fatal(err)
-		}
-		if _, err := execDB(handler.CmdCreateTable); err != nil {
-			b.Fatal(err)
-		}
-	}
-
 	const maxDuration time.Duration = 1<<63 - 1
 
 	f := func(test string, b *testing.B) {
-
 		ds := make([]time.Duration, b.N)
 		var avg, max time.Duration
 		min := maxDuration
@@ -131,13 +102,24 @@ func BenchmarkInsert(b *testing.B) {
 		b.ReportMetric(med.Seconds(), "medsec/op")
 	}
 
+	// Additional info.
+	log.SetOutput(os.Stdout)
+
+	format := `
+GOMAXPROCS: %d
+NumCPU: %d
+Driver Version: %s
+HANA Version: %s
+`
+	log.Printf(format, runtime.GOMAXPROCS(0), runtime.NumCPU(), dbHandler.DriverVersion(), dbHandler.HDBVersion())
+
 	// Start benchmarks.
+	names := []string{"bulkSeq", "manySeq", "bulkPar", "manyPar"}
 	tests := []string{handler.TestBulkSeq, handler.TestManySeq, handler.TestBulkPar, handler.TestManyPar}
 
-	for _, test := range tests {
-		recreateTable()
+	for i, test := range tests {
 		// Use batchCount and batchCount flags.
-		b.Run(test, func(b *testing.B) {
+		b.Run(names[i], func(b *testing.B) {
 			f(test, b)
 		})
 	}

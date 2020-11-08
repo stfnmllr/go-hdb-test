@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: 2020 Stefan Miller
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package handler
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+)
+
+const (
+	urlQueryBatchCount = "batchcount"
+	urlQueryBatchSize  = "batchsize"
+
+	urlQuerySchemaName = "schemaname"
+	urlQueryTableName  = "tablename"
+)
+
+type urlQuery struct {
+	values url.Values
+}
+
+func newURLQuery(r *http.Request) *urlQuery {
+	return &urlQuery{values: r.URL.Query()}
+}
+
+func (q *urlQuery) get(name string) (string, error) {
+	v := q.values.Get(name)
+	if v == "" {
+		return "", fmt.Errorf("url query value %s missing", name)
+	}
+	return v, nil
+}
+
+func (q *urlQuery) getInt(name string) (int, error) {
+	s, err := q.get(name)
+	if err != nil {
+		return 0, err
+	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	return i, nil
+}
