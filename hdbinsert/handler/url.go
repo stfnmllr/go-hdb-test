@@ -35,14 +35,14 @@ func (q *urlQuery) get(name string) (string, error) {
 	return v, nil
 }
 
-func (q *urlQuery) getInt(name string) (int, error) {
+func (q *urlQuery) getInt(name string, defValue int) int {
 	s, err := q.get(name)
 	if err != nil {
-		return 0, err
+		return defValue
 	}
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, err
+		return defValue
 	}
-	return i, nil
+	return i
 }

@@ -60,8 +60,8 @@ After starting a browser pointing to the server address the following HTML page 
  
 * the first section displays some runtime information like GOMAXPROCS and the driver and database version
 * the second section lists all test relevant parameters which can be set as environment variables or commandline parameters starting hdbinsert
-* the third sections allows to execute tests with predefined BatchCount and BatchSize parameters
-* the last seconds provides some database operations for the selected test database schema and table
+* the third sections allows to execute tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
+* the last section provides some database operations for the selected test database schema and table
 
 Clicking on one of the predefined test will execute it and display the result consisting of test parameters and the 'insert' duration in seconds.
 The result is a JSON payload, which provides an easy way to be interpreted by a program.
@@ -102,9 +102,9 @@ In addition to the standard Go benchmarks four additional metrics are reported:
 * medsec/op: the median  time (*)
 * minsec/op: the minimal time (*)
 
-(*) inserting BatchCount * BatchSize records into the database table when executing one test several times.
+(*) inserting BatchCount x BatchSize records into the database table when executing one test several times.
 
-* for details about Go benchmarks please see the [Golang testing documentation](https://golang.org/pkg/testing)
+For details about Go benchmarks please see the [Golang testing documentation](https://golang.org/pkg/testing).
 
 ### Benchmark examples
 
@@ -122,33 +122,38 @@ go test -c
 
 
 ```
-./benchmark.test -test.bench . -test.benchtime 10x -batchSize 10000 -batchCount 10
+./benchmark.test -test.bench . -test.benchtime 10x
 ```
 
 * -test.bench . (run all benchmarks)
 * -test.benchtime 10x (run each benchmark ten times)
-* -batchSize (write chunks of 10.000 records)
-* -batchCount (10 chunks whether sequential or 'parallel')
+* run benchmarks for all BatchCount / BatchSize combinations defined as parameters 
+* the test database table is dropped and re-created before each benchmark execution (command-line parameter drop defaults to true)
 
 ```
-./benchmark.test -test.bench . -test.benchtime 10x -batchSize 10000 -batchCount 10 -drop -wait 5 
+./benchmark.test -test.bench . -test.benchtime 10x -parameters "10x10000"
+```
+* same like before but
+* execute benchmarks only for 10x10000 as BatchCount / BatchSize combination
+
+```
+./benchmark.test -test.bench . -test.benchtime 10x -wait 5 
+```
+
+* same like first example and
+* -wait 5 (wait 5 seconds before starting a benchmark run to reduce database pressure)
+
+```
+./benchmark.test -test.bench . -test.benchtime 10x -wait 5 -separate
 ```
 
 * same like before and
-* -drop (drop and recreate database table before each benchmark execution)
-* -wait 5 (wait 5 seconds before starting each benchmark to reduce database pressure)
-
-```
-./benchmark.test -test.bench . -test.benchtime 10x -batchSize 10000 -batchCount 10 -drop -wait 5 -separate
-```
-
-* same like before and
-* -separate (create own table for the 'parallel' benchmarks - table name: <tablename>_<number> with 0 <= <number> < batchCount)
+* -separate (create own table for the 'parallel' benchmarks - table name: \<tablename\>\_\<number\> with 0 <= \<number\> < batchCount)
 
 ### Benchmark example output
 
 ```
-./benchmark.test -test.bench . -test.benchtime 10x -batchSize 10000 -batchCount 10 -drop -wait 5 
+./benchmark.test -test.bench . -test.benchtime 10x -wait 5
 
 GOMAXPROCS: 32
 NumCPU: 32
@@ -157,9 +162,33 @@ HANA Version: 2.00.045.00.1575639312
 goos: linux
 goarch: amd64
 pkg: github.com/stfnmllr/go-hdb-test/hdbinsert/benchmark
-BenchmarkInsert/bulkSeq-32         	      10	5601837358 ns/op	         0.483 avgsec/op	         0.513 maxsec/op	         0.486 medsec/op	         0.446 minsec/op
-BenchmarkInsert/manySeq-32         	      10	5474729249 ns/op	         0.370 avgsec/op	         0.393 maxsec/op	         0.367 medsec/op	         0.362 minsec/op
-BenchmarkInsert/bulkPar-32         	      10	5500516542 ns/op	         0.202 avgsec/op	         0.214 maxsec/op	         0.203 medsec/op	         0.189 minsec/op
-BenchmarkInsert/manyPar-32         	      10	5481515209 ns/op	         0.193 avgsec/op	         0.206 maxsec/op	         0.192 medsec/op	         0.183 minsec/op
+BenchmarkInsert/1x100000/bulkSeq-32 	      10	5491625426 ns/op	         0.386 avgsec/op	         0.401 maxsec/op	         0.386 medsec/op	         0.372 minsec/op
+BenchmarkInsert/1x100000/manySeq-32 	      10	5411059768 ns/op	         0.306 avgsec/op	         0.334 maxsec/op	         0.303 medsec/op	         0.277 minsec/op
+BenchmarkInsert/1x100000/bulkPar-32 	      10	5467641640 ns/op	         0.360 avgsec/op	         0.381 maxsec/op	         0.359 medsec/op	         0.346 minsec/op
+BenchmarkInsert/1x100000/manyPar-32 	      10	5409775781 ns/op	         0.306 avgsec/op	         0.333 maxsec/op	         0.304 medsec/op	         0.289 minsec/op
+BenchmarkInsert/10x10000/bulkSeq-32 	      10	5589876312 ns/op	         0.475 avgsec/op	         0.517 maxsec/op	         0.466 medsec/op	         0.443 minsec/op
+BenchmarkInsert/10x10000/manySeq-32 	      10	5468570802 ns/op	         0.363 avgsec/op	         0.378 maxsec/op	         0.359 medsec/op	         0.352 minsec/op
+BenchmarkInsert/10x10000/bulkPar-32 	      10	5497928724 ns/op	         0.199 avgsec/op	         0.224 maxsec/op	         0.197 medsec/op	         0.184 minsec/op
+BenchmarkInsert/10x10000/manyPar-32 	      10	5473941266 ns/op	         0.187 avgsec/op	         0.195 maxsec/op	         0.190 medsec/op	         0.175 minsec/op
+BenchmarkInsert/100x1000/bulkSeq-32 	      10	5891522728 ns/op	         0.771 avgsec/op	         0.803 maxsec/op	         0.768 medsec/op	         0.753 minsec/op
+BenchmarkInsert/100x1000/manySeq-32 	      10	5763993305 ns/op	         0.657 avgsec/op	         0.675 maxsec/op	         0.654 medsec/op	         0.645 minsec/op
+BenchmarkInsert/100x1000/bulkPar-32 	      10	7146420424 ns/op	         0.299 avgsec/op	         0.323 maxsec/op	         0.301 medsec/op	         0.277 minsec/op
+BenchmarkInsert/100x1000/manyPar-32 	      10	7119091846 ns/op	         0.309 avgsec/op	         0.332 maxsec/op	         0.309 medsec/op	         0.289 minsec/op
+BenchmarkInsert/1x1000000/bulkSeq-32         	      10	10156033702 ns/op	     4.47 avgsec/op	         4.57 maxsec/op	         4.46 medsec/op	         4.40 minsec/op
+BenchmarkInsert/1x1000000/manySeq-32         	      10	9013212595 ns/op	         3.50 avgsec/op	         3.65 maxsec/op	         3.49 medsec/op	         3.30 minsec/op
+BenchmarkInsert/1x1000000/bulkPar-32         	      10	9564600274 ns/op	         4.05 avgsec/op	         4.14 maxsec/op	         4.07 medsec/op	         3.91 minsec/op
+BenchmarkInsert/1x1000000/manyPar-32         	      10	9046538676 ns/op	         3.55 avgsec/op	         3.59 maxsec/op	         3.56 medsec/op	         3.52 minsec/op
+BenchmarkInsert/10x100000/bulkSeq-32         	      10	10222504416 ns/op	     4.53 avgsec/op	         4.74 maxsec/op	         4.55 medsec/op	         4.23 minsec/op
+BenchmarkInsert/10x100000/manySeq-32         	      10	9236246972 ns/op	         3.61 avgsec/op	         3.72 maxsec/op	         3.61 medsec/op	         3.52 minsec/op
+BenchmarkInsert/10x100000/bulkPar-32         	      10	7733685534 ns/op	         1.93 avgsec/op	         1.99 maxsec/op	         1.92 medsec/op	         1.86 minsec/op
+BenchmarkInsert/10x100000/manyPar-32         	      10	7668492132 ns/op	         1.92 avgsec/op	         2.13 maxsec/op	         1.90 medsec/op	         1.78 minsec/op
+BenchmarkInsert/100x10000/bulkSeq-32         	      10	11273520788 ns/op	     5.47 avgsec/op	         5.74 maxsec/op	         5.45 medsec/op	         5.34 minsec/op
+BenchmarkInsert/100x10000/manySeq-32         	      10	10055706775 ns/op	     4.34 avgsec/op	         4.46 maxsec/op	         4.34 medsec/op	         4.25 minsec/op
+BenchmarkInsert/100x10000/bulkPar-32         	      10	10156310805 ns/op	     2.38 avgsec/op	         2.70 maxsec/op	         2.37 medsec/op	         2.25 minsec/op
+BenchmarkInsert/100x10000/manyPar-32         	      10	10069910603 ns/op	     2.37 avgsec/op	         2.45 maxsec/op	         2.39 medsec/op	         2.24 minsec/op
+BenchmarkInsert/1000x1000/bulkSeq-32         	      10	15017978929 ns/op	     9.14 avgsec/op	         9.24 maxsec/op	         9.12 medsec/op	         9.00 minsec/op
+BenchmarkInsert/1000x1000/manySeq-32         	      10	13740478158 ns/op	     7.97 avgsec/op	         8.05 maxsec/op	         7.97 medsec/op	         7.91 minsec/op
+BenchmarkInsert/1000x1000/bulkPar-32         	      10	27074190075 ns/op	     3.90 avgsec/op	         4.03 maxsec/op	         3.89 medsec/op	         3.80 minsec/op
+BenchmarkInsert/1000x1000/manyPar-32         	      10	26558184657 ns/op	     3.90 avgsec/op	         4.13 maxsec/op	         3.89 medsec/op	         3.79 minsec/op
 PASS
 ```

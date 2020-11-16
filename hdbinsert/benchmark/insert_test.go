@@ -6,6 +6,7 @@ package benchmark
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stfnmllr/go-hdb-test/hdbinsert/env"
 	"github.com/stfnmllr/go-hdb-test/hdbinsert/handler"
 )
 
@@ -42,8 +44,8 @@ func BenchmarkInsert(b *testing.B) {
 
 	client := ts.Client()
 
-	execTest := func(test string) (*handler.TestResult, error) {
-		r, err := client.Get(ts.URL + test)
+	execTest := func(test string, batchCount, batchSize int) (*handler.TestResult, error) {
+		r, err := client.Get(fmt.Sprintf("%s%s?batchcount=%d&batchsize=%d", ts.URL, test, batchCount, batchSize))
 		if err != nil {
 			return nil, err
 		}
@@ -59,13 +61,13 @@ func BenchmarkInsert(b *testing.B) {
 
 	const maxDuration time.Duration = 1<<63 - 1
 
-	f := func(test string, b *testing.B) {
+	f := func(test string, batchCount, batchSize int, b *testing.B) {
 		ds := make([]time.Duration, b.N)
 		var avg, max time.Duration
 		min := maxDuration
 
 		for i := 0; i < b.N; i++ {
-			r, err := execTest(test)
+			r, err := execTest(test, batchCount, batchSize)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -117,10 +119,14 @@ HANA Version: %s
 	names := []string{"bulkSeq", "manySeq", "bulkPar", "manyPar"}
 	tests := []string{handler.TestBulkSeq, handler.TestManySeq, handler.TestBulkPar, handler.TestManyPar}
 
-	for i, test := range tests {
-		// Use batchCount and batchCount flags.
-		b.Run(names[i], func(b *testing.B) {
-			f(test, b)
+	for _, prm := range env.Parameters().Prms {
+		b.Run(fmt.Sprintf("%dx%d", prm.BatchCount, prm.BatchSize), func(b *testing.B) {
+			for i, test := range tests {
+				// Use batchCount and batchCount flags.
+				b.Run(names[i], func(b *testing.B) {
+					f(test, prm.BatchCount, prm.BatchSize, b)
+				})
+			}
 		})
 	}
 }

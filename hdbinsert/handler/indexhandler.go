@@ -25,17 +25,13 @@ func NewIndexHandler(testHandler *TestHandler, dbHandler *DBHandler) (*IndexHand
 }
 
 func (h *IndexHandler) init(testHandler *TestHandler, dbHandler *DBHandler) (*IndexHandler, error) {
-	type prm struct {
-		Count, Size int
-	}
-
 	type page struct {
 		GOMAXPROCS    int
 		NumCPU        int
 		DriverVersion string
 		HDBVersion    string
 		Flags         []*flag.Flag
-		Prms          [][]prm
+		Prms          [][]env.Prm
 		Tests         []string
 		SchemaName    string
 		TableName     string
@@ -49,15 +45,12 @@ func (h *IndexHandler) init(testHandler *TestHandler, dbHandler *DBHandler) (*In
 		DriverVersion: dbHandler.DriverVersion(),
 		HDBVersion:    dbHandler.HDBVersion(),
 		Flags:         env.Flags(),
-		Prms: [][]prm{
-			{{1, 100000}, {10, 10000}, {100, 1000}},
-			{{1, 1000000}, {10, 100000}, {100, 10000}, {1000, 1000}},
-		},
-		Tests:       testHandler.tests(),
-		SchemaName:  env.SchemaName(),
-		TableName:   env.TableName(),
-		SchemaFuncs: dbHandler.schemaFuncs(),
-		TableFuncs:  dbHandler.tableFuncs(),
+		Prms:          env.Parameters().ToNumRecordList(),
+		Tests:         testHandler.tests(),
+		SchemaName:    env.SchemaName(),
+		TableName:     env.TableName(),
+		SchemaFuncs:   dbHandler.schemaFuncs(),
+		TableFuncs:    dbHandler.tableFuncs(),
 	}
 	return h, indexTmpl.Execute(h.b, indexPage)
 }
@@ -132,9 +125,9 @@ var indexTmpl = template.Must(template.New("index").Parse(`
 			</tbody>
 			{{range $Prm := $PrmSet}}
 			<tr>
-				<td>{{$Prm.Count}} x {{$Prm.Size}}</td>
+				<td>{{$Prm.BatchCount}} x {{$Prm.BatchSize}}</td>
 				{{range $Test := $Tests}}
-				<td>{{with $x := printf "%s?batchcount=%d&batchsize=%d" $Test $Prm.Count $Prm.Size }}<a href={{$x}}>start</a>{{end}}</td>
+				<td>{{with $x := printf "%s?batchcount=%d&batchsize=%d" $Test $Prm.BatchCount $Prm.BatchSize }}<a href={{$x}}>start</a>{{end}}</td>
 				{{end}}
 			</tr>
 			{{end}}

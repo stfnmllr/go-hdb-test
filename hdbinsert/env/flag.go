@@ -20,15 +20,14 @@ const (
 	FnPort       = "port"
 	FnSchemaName = "schemaName"
 	FnTableName  = "tableName"
-	FnBatchCount = "batchCount"
-	FnBatchSize  = "batchSize"
 	FnBufferSize = "bufferSize"
+	FnParameters = "parameters"
 	FnDrop       = "drop"
 	FnSeparate   = "separate"
 	FnWait       = "wait"
 )
 
-var flagNames = []string{FnDSN, FnHost, FnPort, FnSchemaName, FnTableName, FnBatchCount, FnBatchSize, FnBufferSize, FnDrop, FnSeparate, FnWait}
+var flagNames = []string{FnDSN, FnHost, FnPort, FnSchemaName, FnTableName, FnBufferSize, FnParameters, FnDrop, FnSeparate, FnWait}
 
 // Environment constants.
 const (
@@ -37,20 +36,20 @@ const (
 	envPort       = "PORT"
 	envSchemaName = "SCHEMANAME"
 	envTableName  = "TABLENAME"
-	envBatchCount = "BATCHCOUNT"
-	envBatchSize  = "BATCHSIZE"
 	envBufferSize = "BUFFERSIZE"
+	envParameters = "PARAMETERS"
 	envDrop       = "DROP"
 	envSeparate   = "SEPARATE"
 	envWait       = "WAIT"
 )
 
 var (
-	dsn, host, port                   string
-	schemaName, tableName             string
-	batchCount, batchSize, bufferSize int
-	drop, separate                    bool
-	wait                              int
+	dsn, host, port       string
+	schemaName, tableName string
+	bufferSize            int
+	parameters            = &PrmValue{Prms: []Prm{{1, 100000}, {10, 10000}, {100, 1000}, {1, 1000000}, {10, 100000}, {100, 10000}, {1000, 1000}}}
+	drop, separate        bool
+	wait                  int
 )
 
 var initRan bool
@@ -66,10 +65,9 @@ func init() {
 	flag.StringVar(&port, FnPort, getStringEnv(envPort, "8080"), fmt.Sprintf("HTTP port (environment variable: %s)", envPort))
 	flag.StringVar(&schemaName, FnSchemaName, getStringEnv(envSchemaName, "TG20POC"), fmt.Sprintf("Schema name (environment variable: %s)", envSchemaName))
 	flag.StringVar(&tableName, FnTableName, getStringEnv(envTableName, "GOMESSAGE"), fmt.Sprintf("Table name (environment variable: %s)", envTableName))
-	flag.IntVar(&batchCount, FnBatchCount, getIntEnv(envBatchCount, 10), fmt.Sprintf("Batch count (environment variable: %s)", envBatchCount))
-	flag.IntVar(&batchSize, FnBatchSize, getIntEnv(envBatchSize, 10000), fmt.Sprintf("Batch size (environment variable: %s)", envBatchSize))
 	flag.IntVar(&bufferSize, FnBufferSize, getIntEnv(envBufferSize, driver.DefaultBufferSize), fmt.Sprintf("Buffer size in bytes (environment variable: %s)", envBufferSize))
-	flag.BoolVar(&drop, FnDrop, getBoolEnv(envDrop, false), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
+	flag.Var(parameters, FnParameters, fmt.Sprintf("Parameters (environment variable: %s)", envParameters))
+	flag.BoolVar(&drop, FnDrop, getBoolEnv(envDrop, true), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
 	flag.BoolVar(&separate, FnSeparate, getBoolEnv(envSeparate, false), fmt.Sprintf("Separate tables for parallel tests (environment variable: %s)", envSeparate))
 	flag.IntVar(&wait, FnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
 }
@@ -89,14 +87,11 @@ func SchemaName() string { return schemaName }
 // TableName returns the tableName command-line flag.
 func TableName() string { return tableName }
 
-// BatchCount returns the batchCount command-line flag.
-func BatchCount() int { return batchCount }
-
-// BatchSize returns the batchSize command-line flag.
-func BatchSize() int { return batchSize }
-
 // BufferSize returns the bufferSize command-line flag.
 func BufferSize() int { return bufferSize }
+
+// Parameters return the parameters command-line flag.
+func Parameters() *PrmValue { return parameters }
 
 // Drop returns the drop command-line flag.
 func Drop() bool { return drop }

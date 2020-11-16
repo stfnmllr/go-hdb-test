@@ -81,6 +81,11 @@ func (h *TestHandler) tests() []string {
 	return []string{TestBulkSeq, TestManySeq, TestBulkPar, TestManyPar}
 }
 
+const (
+	defBatchCount = 10
+	defBatchSize  = 10000
+)
+
 func (h *TestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Try to get a comparable environment for each run
 	// by clearing garbage from previous runs.
@@ -88,14 +93,8 @@ func (h *TestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	q := newURLQuery(r)
 
-	batchCount, err := q.getInt(urlQueryBatchCount)
-	if err != nil { // set default value
-		batchCount = env.BatchCount()
-	}
-	batchSize, err := q.getInt(urlQueryBatchSize)
-	if err != nil { // set default value
-		batchSize = env.BatchSize()
-	}
+	batchCount := q.getInt(urlQueryBatchCount, defBatchCount)
+	batchSize := q.getInt(urlQueryBatchSize, defBatchSize)
 
 	drop := env.Drop()
 	separate := env.Separate()
