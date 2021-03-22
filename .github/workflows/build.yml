@@ -13,7 +13,7 @@ jobs:
     - name: Setup go
       uses: actions/setup-go@v2
       with:
-        go-version: '1.15'
+        go-version: '1.16'
     
     - run: |
         go get -u -v golang.org/x/lint/golint
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        go: [ '1.15', '1.14' ]
+        go: [ '1.16', '1.15' ]
       fail-fast: false  
     
     name: Go ${{ matrix.go }} build
